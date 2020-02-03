@@ -265,7 +265,7 @@ void Renderer::create_device()
     queueCreateInfo.queueCount = 1;
     queueCreateInfo.pQueuePriorities = &queuePriority;
 
-    constexpr std::array deviceExtensions = { VK_EXT_PIPELINE_CREATION_FEEDBACK_EXTENSION_NAME, VK_KHR_SWAPCHAIN_EXTENSION_NAME };
+    constexpr std::array deviceExtensions = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
 
     VkDeviceCreateInfo deviceCreateInfo = { VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO } ;
     deviceCreateInfo.queueCreateInfoCount = 1;
@@ -464,15 +464,6 @@ void Renderer::create_pipeline()
 
     check_success(vkCreateRenderPass(d.device, &renderPassCreateInfo, nullptr, &d.renderPass));
 
-    VkPipelineCreationFeedbackEXT pipelineCreationFeedback = {};
-
-    std::array<VkPipelineCreationFeedbackEXT, 2> pipelineStageCreationFeedback = {};
-
-    VkPipelineCreationFeedbackCreateInfoEXT pipelineCreationFeedbackCreateInfo = { VK_STRUCTURE_TYPE_PIPELINE_CREATION_FEEDBACK_CREATE_INFO_EXT };
-    pipelineCreationFeedbackCreateInfo.pPipelineCreationFeedback = &pipelineCreationFeedback;
-    pipelineCreationFeedbackCreateInfo.pipelineStageCreationFeedbackCount = pipelineStageCreationFeedback.size();
-    pipelineCreationFeedbackCreateInfo.pPipelineStageCreationFeedbacks = pipelineStageCreationFeedback.data();
-
     std::array<VkPipelineShaderStageCreateInfo, 2> shaderStages = {};
     shaderStages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     shaderStages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
@@ -482,7 +473,6 @@ void Renderer::create_pipeline()
     shaderStages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
     shaderStages[1].module = d.fragmentModule;
     shaderStages[1].pName = "main";
-    static_assert(pipelineStageCreationFeedback.size() == shaderStages.size());
 
     std::array<VkVertexInputBindingDescription, 1> vertexBindings = {};
     vertexBindings[0].binding = 0;
@@ -541,7 +531,6 @@ void Renderer::create_pipeline()
     dynamicState.pDynamicStates = dynamicStates.data();
 
     VkGraphicsPipelineCreateInfo pipelineCreateInfo = { VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO };
-    pipelineCreateInfo.pNext = &pipelineCreationFeedbackCreateInfo;
     pipelineCreateInfo.stageCount = shaderStages.size();
     pipelineCreateInfo.pStages = shaderStages.data();
     pipelineCreateInfo.pVertexInputState = &vertexInputState;
@@ -557,27 +546,6 @@ void Renderer::create_pipeline()
     pipelineCreateInfo.subpass = 0;
 
     check_success(vkCreateGraphicsPipelines(d.device, d.pipelineCache, 1, &pipelineCreateInfo, nullptr, &d.pipeline));
-
-    if (pipelineCreationFeedback.flags & VK_PIPELINE_CREATION_FEEDBACK_VALID_BIT_EXT)
-    {
-        printf("Pipeline creation info\n");
-        printf("\tCache hit: %s\n", (pipelineCreationFeedback.flags & VK_PIPELINE_CREATION_FEEDBACK_APPLICATION_PIPELINE_CACHE_HIT_BIT_EXT) ? "true" : "false");
-        printf("\tDuration: %luns\n", pipelineCreationFeedback.duration);
-        printf("\n");
-        for (size_t i = 0; i < pipelineStageCreationFeedback.size(); ++i)
-        {
-            printf("\tStage %lu:\n", i);
-            if (pipelineStageCreationFeedback[i].flags & VK_PIPELINE_CREATION_FEEDBACK_VALID_BIT_EXT)
-            {
-                printf("\t\tCache hit: %s\n", (pipelineStageCreationFeedback[i].flags & VK_PIPELINE_CREATION_FEEDBACK_APPLICATION_PIPELINE_CACHE_HIT_BIT_EXT) ? "true" : "false");
-                printf("\t\tDuration: %luns\n", pipelineStageCreationFeedback[i].duration);
-            }
-            else
-            {
-                printf("\t\tNo data");
-            }
-        }
-    }
 }
 
 void Renderer::create_swapchain()
