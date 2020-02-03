@@ -7,7 +7,6 @@ constexpr char WM_DELETE_WINDOW_NAME[] = "WM_DELETE_WINDOW";
 constexpr char WM_PROTOCOLS_NAME[] = "WM_PROTOCOLS";
 
 Window::Window(std::string_view window_name)
-    :_closed(false)
 {
     int screen_id;
     _connection.reset(xcb_connect(nullptr, &screen_id));
@@ -58,17 +57,12 @@ Window::Window(std::string_view window_name)
     xcb_map_window(_connection.get(), _window);
 }
 
-bool Window::closed() const noexcept
-{
-    return _closed || xcb_connection_has_error(_connection.get());
-}
-
 xcb_connection_t *Window::connection() const noexcept
 {
     return _connection.get();
 }
 
-void Window::poll_event()
+std::unique_ptr<Event> Window::poll_event()
 {
     std::unique_ptr<xcb_generic_event_t, FreeDeleter> event{ xcb_wait_for_event(_connection.get()) };
     switch (event->response_type & ~0x80)
@@ -79,13 +73,14 @@ void Window::poll_event()
             && _wm_protocols_atom == clientMessage->type
             && _wm_delete_window_atom == clientMessage->data.data32[0])
         {
-            _closed = true;
+            return std::unique_ptr<Event>(new QuitEvent);
         }
         break;
     }
     default:
         break;
     }
+    return nullptr;
 }
 
 xcb_window_t Window::window() const noexcept
