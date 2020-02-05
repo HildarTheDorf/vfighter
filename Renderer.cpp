@@ -1,11 +1,7 @@
-#define GLM_FORCE_DEPTH_ZERO_TO_ONE
-#define GLM_FORCE_LEFT_HANDED
-#define VK_USE_PLATFORM_XCB_KHR
 #include "Renderer.hpp"
 
 #include "BadVkResult.hpp"
 
-#include <glm/glm.hpp>
 #include <glm/gtx/transform.hpp>
 
 #include <array>
@@ -112,7 +108,6 @@ static VkSurfaceFormatKHR select_format(VkPhysicalDevice physicalDevice, VkSurfa
 }
 
 Renderer::Renderer(xcb_connection_t *connection, xcb_window_t window)
-    :timer(0)
 {
     create_instance();
     create_surface(connection, window);
@@ -127,7 +122,7 @@ Renderer::Renderer(xcb_connection_t *connection, xcb_window_t window)
     finish_data_upload();
 }
 
-void Renderer::render()
+void Renderer::render(const Scene& scene)
 {
     uint32_t imageIndex;
     const auto acquireResult = vkAcquireNextImageKHR(d.device, d.swapchain, UINT64_MAX, d.acquireCompleteSemaphore, nullptr, &imageIndex);
@@ -158,7 +153,7 @@ void Renderer::render()
         check_success(vkWaitForFences(d.device, 1, &imageData.fence, VK_TRUE, UINT64_MAX));
         check_success(vkResetFences(d.device, 1, &imageData.fence));
 
-        record_command_buffer(imageIndex);
+        record_command_buffer(imageIndex, scene);
 
         constexpr VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
         VkSubmitInfo submitInfo = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
@@ -213,7 +208,7 @@ void Renderer::create_instance()
     VkApplicationInfo applicationInfo = { VK_STRUCTURE_TYPE_APPLICATION_INFO };
     applicationInfo.apiVersion = VK_API_VERSION_1_2;
 
-    constexpr std::array enabledLayers = { "VK_LAYER_KHRONOS_validation" };
+    constexpr std::array enabledLayers = { "VK_LAYER_KHRONOS_validation", "VK_LAYER_LUNARG_monitor" };
     constexpr std::array instanceExtensions = { VK_EXT_DEBUG_UTILS_EXTENSION_NAME, VK_KHR_SURFACE_EXTENSION_NAME, VK_KHR_XCB_SURFACE_EXTENSION_NAME };
 
     VkInstanceCreateInfo instanceCreateInfo = { VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO };
@@ -622,6 +617,7 @@ void Renderer::create_swapchain()
     depthImageCreateInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
     VmaAllocationCreateInfo depthAllocationCreateInfo = {};
+    depthAllocationCreateInfo.flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
     depthAllocationCreateInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY; // TODO: Lazy allocate if available
 
     check_success(vmaCreateImage(d.allocator, &depthImageCreateInfo, &depthAllocationCreateInfo, &d.depthImage, &d.depthMemory, nullptr));
@@ -702,7 +698,7 @@ void Renderer::recreate_swapchain()
     create_swapchain();
 }
 
-void Renderer::record_command_buffer(uint32_t imageIndex)
+void Renderer::record_command_buffer(uint32_t imageIndex, const Scene& scene)
 {
     const auto& imageData = perImageData[imageIndex];
 
@@ -727,20 +723,11 @@ void Renderer::record_command_buffer(uint32_t imageIndex)
         { 0.0f, 0.0f, static_cast<float>(surfaceExtent.width), static_cast<float>(surfaceExtent.height), 0.0f, 1.0f }
     }};
 
-    const auto translationTransform = glm::translate(glm::vec3(0, 0, 5));
+    const auto modelMatrix = glm::translate(scene.modelLocation) * glm::mat4_cast(scene.modelRotation);
 
-    // TODO: Don't tie animation to framerate
-    constexpr glm::vec3 rotationAxis{ 0, 1, 0 };
-    const auto rotationAmount = (timer++ * glm::radians(360.0f)) / UINT8_MAX;
-    const auto rotationTransform = glm::rotate(rotationAmount, rotationAxis);
-
-    const auto modelMatrix = translationTransform * rotationTransform;
-
-    constexpr glm::vec3 cameraLocation{ 0, 3, 0 };
-    constexpr glm::vec3 cameraTarget{ 0, 0, 5 };
     constexpr glm::vec3 cameraUp{ 0, 1, 0 };
 
-    const auto viewMatrix = glm::lookAt(cameraLocation, cameraTarget, cameraUp);
+    const auto viewMatrix = glm::lookAt(scene.cameraLocation, scene.modelLocation, cameraUp);
 
     // TODO: Depth clamp or use a non-infinite perspective
     auto projectionMatrix = glm::infinitePerspective(FIELD_OF_VIEW, viewports[0].width / viewports[0].height, NEAR_CLIP_PLANE);

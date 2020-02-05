@@ -1,10 +1,12 @@
-#define VK_USE_PLATFORM_XCB_KHR
 #include "Renderer.hpp"
 #include "Window.hpp"
 
+#include <chrono>
 #include <mutex>
 #include <queue>
 #include <thread>
+
+constexpr auto FRAME_DURATION = std::chrono::milliseconds(10);
 
 static std::mutex g_eventMutex;
 static std::queue<std::unique_ptr<const Event>> g_eventQueue;
@@ -30,23 +32,48 @@ static void push_event(std::unique_ptr<const Event> event)
     g_eventQueue.emplace(std::move(event));
 }
 
+static bool process_events(Scene& scene)
+{
+    std::unique_ptr<const Event> event;
+    while (event = pop_event())
+    {
+        switch (event->type())
+        {
+        case EventType::Quit:
+            return false;
+        default:
+            puts("Unhandled Event");
+            break;
+        }
+    }
+    return true;
+}
+
+static void update_scene(Scene& scene)
+{
+    static uint8_t timer = 0; // HACK
+
+    constexpr glm::vec3 rotationAxis = { 0, 1, 0 };
+    scene.modelRotation = glm::angleAxis(timer++ * glm::radians(360.0f) / UINT8_MAX, rotationAxis);
+}
+
 static void renderer_loop(Renderer& renderer, const Window& window)
 {
-    while (true)
-    {
-        renderer.render();
+    Scene scene = {};
+    scene.cameraLocation = { 0, 3, 0 };
+    scene.modelLocation = { 0, 0, 5 };
 
-        std::unique_ptr<const Event> event;
-        while (event = pop_event())
+    std::chrono::high_resolution_clock clock;
+    auto lastFrameTime = clock.now();
+
+    while (process_events(scene))
+    {
+        renderer.render(scene);
+        auto currentTime = clock.now();
+        if (currentTime > lastFrameTime + FRAME_DURATION)
         {
-            switch (event->type())
-            {
-            case EventType::Quit:
-                return;
-            default:
-                puts("Unhandled Event");
-                break;
-            }
+            lastFrameTime += FRAME_DURATION;
+            update_scene(scene);
         }
     }
 }

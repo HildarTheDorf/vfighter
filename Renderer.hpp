@@ -1,6 +1,20 @@
 #pragma once
 
+#define GLM_FORCE_DEPTH_ZERO_TO_ONE
+#define GLM_FORCE_LEFT_HANDED
+#define VK_USE_PLATFORM_XCB_KHR
+
 #include "RendererBase.hpp"
+
+#include <glm/glm.hpp>
+#include <glm/gtc/quaternion.hpp>
+
+struct Scene
+{
+    glm::vec3 cameraLocation;
+    glm::vec3 modelLocation;
+    glm::quat modelRotation;
+};
 
 class Renderer : protected RendererBase
 {
@@ -10,7 +24,7 @@ public:
     Renderer(xcb_connection_t *connection, xcb_window_t window);
 #endif
 
-    void render();
+    void render(const Scene& scene);
     void save_caches();
 
 private:
@@ -26,7 +40,7 @@ private:
     void create_swapchain();
     void finish_data_upload();
 
-    void record_command_buffer(uint32_t imageIndex);
+    void record_command_buffer(uint32_t imageIndex, const Scene& scene);
     void recreate_swapchain();
 
 private:
@@ -37,6 +51,4 @@ private:
 
     VkSurfaceFormatKHR surfaceFormat;
     VkExtent2D surfaceExtent;
-
-    uint8_t timer;
 };
