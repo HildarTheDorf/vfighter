@@ -748,13 +748,12 @@ void Renderer::record_command_buffer(uint32_t imageIndex, const Scene& scene)
     vkCmdSetScissor(imageData.commandBuffer, 0, scissors.size(), scissors.data());
     vkCmdSetViewport(imageData.commandBuffer, 0, viewports.size(), viewports.data());
 
-    vkCmdPushConstants(imageData.commandBuffer, d.pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstants), &pushConstants);
-
     vkCmdBeginRenderPass(imageData.commandBuffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 
         vkCmdBindPipeline(imageData.commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, d.pipeline);
         vkCmdBindIndexBuffer(imageData.commandBuffer, d.indexBuffer, 0, VK_INDEX_TYPE_UINT16);
         vkCmdBindVertexBuffers(imageData.commandBuffer, 0, vertexBuffers.size(), vertexBuffers.data(), vertexOffsets.data());
+        vkCmdPushConstants(imageData.commandBuffer, d.pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstants), &pushConstants);
         vkCmdDrawIndexed(imageData.commandBuffer, INDEX_DATA.size(), 1, 0, 0, 0);
 
     vkCmdEndRenderPass(imageData.commandBuffer);
