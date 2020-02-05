@@ -33,14 +33,24 @@ constexpr float NEAR_CLIP_PLANE = 0.1f;
 constexpr char PIPELINE_CACHE_FILENAME[] = "pipelinecache.bin";
 constexpr VkDeviceSize STAGING_BUFFER_SIZE = 1 << 10;
 
-constexpr std::array<uint16_t, 6> INDEX_DATA = {{
-    0, 1, 2, 3, 2, 1
+constexpr std::array<uint16_t, 36> INDEX_DATA = {{
+    0, 1, 2, 4, 2, 1,
+    1, 5, 4, 7, 4, 5,
+    5, 3, 7, 6, 7, 3,
+    3, 0, 6, 2, 6, 0,
+    2, 4, 6, 7, 6, 4,
+    1, 0, 5, 3, 5, 0
 }};
-constexpr std::array<PerVertex, 4> VERTEX_DATA = {{
+constexpr std::array<PerVertex, 8> VERTEX_DATA = {{
     {{ -1.0f, -1.0f, -1.0f }, {   0,   0,   0 } },
     {{  1.0f, -1.0f, -1.0f }, { 255,   0,   0 } },
     {{ -1.0f,  1.0f, -1.0f }, {   0, 255,   0 } },
-    {{  1.0f,  1.0f, -1.0f }, { 255, 255,   0 } }
+    {{ -1.0f, -1.0f,  1.0f }, {   0,   0, 255 } },
+    {{  1.0f,  1.0f, -1.0f }, { 255, 255,   0 } },
+    {{  1.0f, -1.0f,  1.0f }, { 255,   0, 255 } },
+    {{ -1.0f,  1.0f,  1.0f }, {   0, 255, 255 } },
+    {{  1.0f,  1.0f,  1.0f }, { 255, 255, 255 } },
+
 }};
 
 constexpr void check_success(VkResult vkResult)
@@ -201,7 +211,7 @@ void Renderer::save_caches()
 void Renderer::create_instance()
 {
     VkApplicationInfo applicationInfo = { VK_STRUCTURE_TYPE_APPLICATION_INFO };
-    applicationInfo.apiVersion = VK_API_VERSION_1_1;
+    applicationInfo.apiVersion = VK_API_VERSION_1_2;
 
     constexpr std::array enabledLayers = { "VK_LAYER_KHRONOS_validation" };
     constexpr std::array instanceExtensions = { VK_EXT_DEBUG_UTILS_EXTENSION_NAME, VK_KHR_SURFACE_EXTENSION_NAME, VK_KHR_XCB_SURFACE_EXTENSION_NAME };
@@ -726,8 +736,8 @@ void Renderer::record_command_buffer(uint32_t imageIndex)
 
     const auto modelMatrix = translationTransform * rotationTransform;
 
-    constexpr glm::vec3 cameraLocation{ 0, 0, 0 };
-    constexpr glm::vec3 cameraTarget{ 0, 0, 1 };
+    constexpr glm::vec3 cameraLocation{ 0, 3, 0 };
+    constexpr glm::vec3 cameraTarget{ 0, 0, 5 };
     constexpr glm::vec3 cameraUp{ 0, 1, 0 };
 
     const auto viewMatrix = glm::lookAt(cameraLocation, cameraTarget, cameraUp);
