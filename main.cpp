@@ -63,7 +63,7 @@ static void renderer_loop(Renderer& renderer, const Window& window)
     scene.cameraLocation = { 0, 3, 0 };
     scene.modelLocation = { 0, 0, 5 };
 
-    std::chrono::high_resolution_clock clock;
+    std::chrono::steady_clock clock;
     auto lastFrameTime = clock.now();
 
     while (process_events(scene))
