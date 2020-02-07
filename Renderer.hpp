@@ -36,6 +36,7 @@ private:
     void allocate_static_memory();
     void begin_data_upload();
     void create_common();
+    void create_descriptors();
     void create_pipeline();
     void create_swapchain();
     void finish_data_upload();

@@ -3,7 +3,7 @@
 layout(location=0) in vec3 in_Position;
 layout(location=1) in vec3 in_Color;
 
-layout(push_constant) uniform Uniforms {
+layout(set=0, binding=0) uniform Uniforms {
     mat4 u_ModelViewMatrix;
     mat4 u_ProjectionMatrix;
 };

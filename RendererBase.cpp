@@ -17,11 +17,14 @@ RendererBase::~RendererBase()
         vkDestroyPipeline(d.device, d.pipeline, nullptr);
         vkDestroyRenderPass(d.device, d.renderPass, nullptr);
 
+        vkDestroyDescriptorPool(d.device, d.descriptorPool, nullptr);
+
         vkDestroyPipelineCache(d.device, d.pipelineCache, nullptr);
         vkDestroyShaderModule(d.device, d.vertexModule, nullptr);
         vkDestroyShaderModule(d.device, d.fragmentModule, nullptr);
         vkDestroySemaphore(d.device, d.acquireCompleteSemaphore, nullptr);
         vkDestroyPipelineLayout(d.device, d.pipelineLayout, nullptr);
+        vkDestroyDescriptorSetLayout(d.device, d.descriptorSetLayout, nullptr);
         vkDestroyCommandPool(d.device, d.commandPool, nullptr);
 
         vmaDestroyBuffer(d.allocator, d.vertexBuffer, d.vertexMemory);
@@ -64,6 +67,10 @@ void RendererBase::destroy_swapchain()
 
     vkDestroyImageView(d.device, d.depthView, nullptr);
     d.depthView = nullptr;
+
+    vmaDestroyBuffer(d.allocator, d.uniformBuffer, d.uniformMemory);
+    d.uniformMemory = VK_NULL_HANDLE;
+    d.uniformBuffer = VK_NULL_HANDLE;
 
     vmaDestroyImage(d.allocator, d.depthImage, d.depthMemory);
     d.depthMemory = VK_NULL_HANDLE;

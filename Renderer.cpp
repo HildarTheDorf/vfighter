@@ -15,14 +15,14 @@ struct PerVertex
     glm::u8vec3 color;
 };
 
-struct PushConstants
+struct Uniforms
 {
     glm::mat4 modelViewMatrix;
     glm::mat4 projectionMatrix;
 };
-static_assert(sizeof(PushConstants) <= 128);
 
 constexpr uint32_t DEFAULT_IMAGE_COUNT = 3;
+
 constexpr VkFormat DEPTH_FORMAT = VK_FORMAT_D16_UNORM;
 constexpr float FIELD_OF_VIEW = glm::radians(45.0f);
 constexpr float NEAR_CLIP_PLANE = 0.1f;
@@ -117,6 +117,7 @@ Renderer::Renderer(xcb_connection_t *connection, xcb_window_t window)
     allocate_static_memory();
     begin_data_upload();
     create_common();
+    create_descriptors();
     create_pipeline();
     create_swapchain();
     finish_data_upload();
@@ -382,14 +383,20 @@ void Renderer::create_common()
 
     check_success(vkCreateCommandPool(d.device, &commandPoolCreateInfo, nullptr, &d.commandPool));
 
-    VkPushConstantRange pushConstantRange;
-    pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-    pushConstantRange.offset = 0;
-    pushConstantRange.size = sizeof(PushConstants);
+    std::array<VkDescriptorSetLayoutBinding, 1> descriptorSetBindings = {};
+    descriptorSetBindings[0].binding = 0;
+    descriptorSetBindings[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+    descriptorSetBindings[0].descriptorCount = 1;
+    descriptorSetBindings[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
+    VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
+    descriptorSetLayoutCreateInfo.bindingCount = descriptorSetBindings.size();
+    descriptorSetLayoutCreateInfo.pBindings = descriptorSetBindings.data();
+    check_success(vkCreateDescriptorSetLayout(d.device, &descriptorSetLayoutCreateInfo, nullptr, &d.descriptorSetLayout));
 
     VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo = { VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
-    pipelineLayoutCreateInfo.pushConstantRangeCount = 1;
-    pipelineLayoutCreateInfo.pPushConstantRanges = &pushConstantRange;
+    pipelineLayoutCreateInfo.setLayoutCount = 1;
+    pipelineLayoutCreateInfo.pSetLayouts = &d.descriptorSetLayout;
     check_success(vkCreatePipelineLayout(d.device, &pipelineLayoutCreateInfo, nullptr, &d.pipelineLayout));
 
     constexpr VkSemaphoreCreateInfo semaphoreCreateInfo = { VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO };
@@ -416,6 +423,27 @@ void Renderer::create_common()
     pipelineCacheCreateInfo.pInitialData = pipelineCacheData.data();
 
     check_success(vkCreatePipelineCache(d.device, &pipelineCacheCreateInfo, nullptr, &d.pipelineCache));
+}
+
+void Renderer::create_descriptors()
+{
+    constexpr std::array<VkDescriptorPoolSize, 1> poolSizes = {
+        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1}
+    };
+
+    VkDescriptorPoolCreateInfo descriptorPoolCreateInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO };
+    descriptorPoolCreateInfo.maxSets = 1;
+    descriptorPoolCreateInfo.poolSizeCount = poolSizes.size();
+    descriptorPoolCreateInfo.pPoolSizes = poolSizes.data();
+
+    check_success(vkCreateDescriptorPool(d.device, &descriptorPoolCreateInfo, nullptr, &d.descriptorPool));
+
+    VkDescriptorSetAllocateInfo descriptorAllocateInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
+    descriptorAllocateInfo.descriptorPool = d.descriptorPool;
+    descriptorAllocateInfo.descriptorSetCount = 1;
+    descriptorAllocateInfo.pSetLayouts = &d.descriptorSetLayout;
+
+    check_success(vkAllocateDescriptorSets(d.device, &descriptorAllocateInfo, &d.descriptorSet));
 }
 
 void Renderer::create_pipeline()
@@ -634,6 +662,27 @@ void Renderer::create_swapchain()
 
     check_success(vkCreateImageView(d.device, &depthImageViewCreateInfo, nullptr, &d.depthView));
 
+    VkBufferCreateInfo uniformBufferCreateInfo = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+    uniformBufferCreateInfo.size = numSwapchainImages * sizeof(Uniforms);
+    uniformBufferCreateInfo.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+
+    VmaAllocationCreateInfo uniformBufferAllocationInfo = { };
+    uniformBufferAllocationInfo.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
+    uniformBufferAllocationInfo.usage = VMA_MEMORY_USAGE_CPU_TO_GPU;
+    
+    check_success(vmaCreateBuffer(d.allocator, &uniformBufferCreateInfo, &uniformBufferAllocationInfo, &d.uniformBuffer, &d.uniformMemory, nullptr));
+
+    const VkDescriptorBufferInfo uniformBufferInfo = { d.uniformBuffer, 0, sizeof(Uniforms) };
+
+    std::array<VkWriteDescriptorSet, 1> descriptorWrites = {};
+    descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    descriptorWrites[0].dstSet = d.descriptorSet;
+    descriptorWrites[0].dstBinding = 0;
+    descriptorWrites[0].descriptorCount = 1;
+    descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+    descriptorWrites[0].pBufferInfo = &uniformBufferInfo;
+    vkUpdateDescriptorSets(d.device, descriptorWrites.size(), descriptorWrites.data(), 0, nullptr);
+
     VkCommandBufferAllocateInfo commandBufferAllocateInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
     commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
     commandBufferAllocateInfo.commandPool = d.commandPool;
@@ -715,6 +764,8 @@ void Renderer::record_command_buffer(uint32_t imageIndex, const Scene& scene)
     renderPassBeginInfo.clearValueCount = clearValues.size();
     renderPassBeginInfo.pClearValues = clearValues.data();
 
+    const uint32_t dynamicUniformOffset = imageIndex * sizeof(Uniforms);
+
     const std::array<VkRect2D, 1> scissors = {{
         {{0, 0}, surfaceExtent}
     }};
@@ -723,24 +774,28 @@ void Renderer::record_command_buffer(uint32_t imageIndex, const Scene& scene)
         { 0.0f, 0.0f, static_cast<float>(surfaceExtent.width), static_cast<float>(surfaceExtent.height), 0.0f, 1.0f }
     }};
 
+    const std::array<VkBuffer, 1> vertexBuffers = { d.vertexBuffer };
+    const std::array<VkDeviceSize, 1> vertexOffsets = { 0 };
+    static_assert(vertexBuffers.size() == vertexOffsets.size());
+
     const auto modelMatrix = glm::translate(scene.modelLocation) * glm::mat4_cast(scene.modelRotation);
 
     constexpr glm::vec3 cameraUp{ 0, 1, 0 };
-
     const auto viewMatrix = glm::lookAt(scene.cameraLocation, scene.modelLocation, cameraUp);
 
     // TODO: Depth clamp or use a non-infinite perspective
     auto projectionMatrix = glm::infinitePerspective(FIELD_OF_VIEW, viewports[0].width / viewports[0].height, NEAR_CLIP_PLANE);
     projectionMatrix[1][1] *= -1; // Correct for OriginUpperLeft (Vulkan) vs OriginLowerLeft (GLM)
 
-    const PushConstants pushConstants {
-        viewMatrix * modelMatrix,
-        projectionMatrix
-    };
+    const Uniforms uniforms { viewMatrix * modelMatrix, projectionMatrix };
 
-    const std::array<VkBuffer, 1> vertexBuffers = { d.vertexBuffer };
-    const std::array<VkDeviceSize, 1> vertexOffsets = { 0 };
-    static_assert(vertexBuffers.size() == vertexOffsets.size());
+    const auto uniformOffset = imageIndex * sizeof(Uniforms);
+
+    void *pData;
+    vmaMapMemory(d.allocator, d.uniformMemory, &pData);
+        memcpy(reinterpret_cast<void *>(reinterpret_cast<uintptr_t>(pData) + uniformOffset), &uniforms, sizeof(Uniforms));
+        vmaFlushAllocation(d.allocator, d.uniformMemory, uniformOffset, sizeof(Uniforms));
+    vmaUnmapMemory(d.allocator, d.uniformMemory);
 
     check_success(vkResetCommandBuffer(imageData.commandBuffer, 0));
     check_success(vkBeginCommandBuffer(imageData.commandBuffer, &commandBufferBeginInfo));
@@ -750,10 +805,10 @@ void Renderer::record_command_buffer(uint32_t imageIndex, const Scene& scene)
 
     vkCmdBeginRenderPass(imageData.commandBuffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 
+        vkCmdBindDescriptorSets(imageData.commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, d.pipelineLayout, 0, 1, &d.descriptorSet, 1, &dynamicUniformOffset);
         vkCmdBindPipeline(imageData.commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, d.pipeline);
         vkCmdBindIndexBuffer(imageData.commandBuffer, d.indexBuffer, 0, VK_INDEX_TYPE_UINT16);
         vkCmdBindVertexBuffers(imageData.commandBuffer, 0, vertexBuffers.size(), vertexBuffers.data(), vertexOffsets.data());
-        vkCmdPushConstants(imageData.commandBuffer, d.pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstants), &pushConstants);
         vkCmdDrawIndexed(imageData.commandBuffer, INDEX_DATA.size(), 1, 0, 0, 0);
 
     vkCmdEndRenderPass(imageData.commandBuffer);

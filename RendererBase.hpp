@@ -52,10 +52,15 @@ protected:
 
         // Common
         VkCommandPool commandPool;
+        VkDescriptorSetLayout descriptorSetLayout;
         VkPipelineLayout pipelineLayout;
         VkSemaphore acquireCompleteSemaphore;
         VkShaderModule fragmentModule, vertexModule;
         VkPipelineCache pipelineCache;
+
+        // Descriptors
+        VkDescriptorPool descriptorPool;
+        VkDescriptorSet descriptorSet;
 
         // Pipeline
         VkRenderPass renderPass;
@@ -63,8 +68,9 @@ protected:
 
         // Swapchain
         VkSwapchainKHR swapchain;
+        VkBuffer uniformBuffer;
         VkImage depthImage;
-        VmaAllocation depthMemory;
+        VmaAllocation uniformMemory, depthMemory;
         VkImageView depthView;
     } d;
     std::vector<PerImage> perImageData;
