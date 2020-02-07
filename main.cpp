@@ -81,7 +81,7 @@ static void renderer_loop(Renderer& renderer, const Window& window)
 static void renderer_entry(const Window *window)
 try
 {
-    Renderer renderer(window->connection(), window->window());
+    Renderer renderer(RendererFlags::EnableValidation, window->connection(), window->window());
 
     renderer_loop(renderer, *window);
 

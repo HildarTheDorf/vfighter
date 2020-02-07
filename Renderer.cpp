@@ -106,9 +106,9 @@ static VkSurfaceFormatKHR select_format(VkPhysicalDevice physicalDevice, VkSurfa
     return surfaceFormats[0];
 }
 
-Renderer::Renderer(xcb_connection_t *connection, xcb_window_t window)
+Renderer::Renderer(RendererFlags flags, xcb_connection_t *connection, xcb_window_t window)
 {
-    create_instance();
+    create_instance(flags);
     create_surface(connection, window);
     select_physical_device();
     create_device();
@@ -206,13 +206,24 @@ void Renderer::save_caches()
     save_file(PIPELINE_CACHE_FILENAME, data.begin(), data.end());
 }
 
-void Renderer::create_instance()
+void Renderer::create_instance(RendererFlags flags)
 {
     VkApplicationInfo applicationInfo = { VK_STRUCTURE_TYPE_APPLICATION_INFO };
     applicationInfo.apiVersion = VK_API_VERSION_1_2;
 
-    constexpr std::array enabledLayers = { "VK_LAYER_KHRONOS_validation", "VK_LAYER_LUNARG_monitor" };
-    constexpr std::array instanceExtensions = { VK_EXT_DEBUG_UTILS_EXTENSION_NAME, VK_KHR_SURFACE_EXTENSION_NAME, VK_KHR_XCB_SURFACE_EXTENSION_NAME };
+    std::vector<const char *> enabledLayers;
+    std::vector instanceExtensions = { VK_KHR_SURFACE_EXTENSION_NAME, VK_KHR_XCB_SURFACE_EXTENSION_NAME };
+
+    if (flags & RendererFlags::EnableValidation)
+    {
+        enabledLayers.emplace_back("VK_LAYER_KHRONOS_validation");
+        instanceExtensions.emplace_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+    }
+
+    if (flags & RendererFlags::EnableRenderDoc)
+    {
+        enabledLayers.emplace_back("VK_LAYER_RENDERDOC_Capture");
+    }
 
     VkInstanceCreateInfo instanceCreateInfo = { VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO };
     instanceCreateInfo.pApplicationInfo = &applicationInfo;

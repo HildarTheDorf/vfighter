@@ -16,19 +16,26 @@ struct Scene
     glm::quat modelRotation;
 };
 
+enum RendererFlags
+{
+    None = 0,
+    EnableValidation = 1 << 0,
+    EnableRenderDoc = 1 << 1
+};
+
 class Renderer : protected RendererBase
 {
 public:
     Renderer() = delete;
 #ifdef VK_USE_PLATFORM_XCB_KHR
-    Renderer(xcb_connection_t *connection, xcb_window_t window);
+    Renderer(RendererFlags flags, xcb_connection_t *connection, xcb_window_t window);
 #endif
 
     void render(const Scene& scene);
     void save_caches();
 
 private:
-    void create_instance();
+    void create_instance(RendererFlags flags);
     void create_surface(xcb_connection_t *connection, xcb_window_t window);
     void select_physical_device();
     void create_device();
