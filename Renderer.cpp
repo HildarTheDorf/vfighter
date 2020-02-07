@@ -127,20 +127,17 @@ void Renderer::render(const Scene& scene)
     uint32_t imageIndex;
     const auto acquireResult = vkAcquireNextImageKHR(d.device, d.swapchain, UINT64_MAX, d.acquireCompleteSemaphore, nullptr, &imageIndex);
 
-    bool swapchainOutOfDate, swapchainUsable;
+    bool swapchainOutOfDate;
     switch (acquireResult)
     {
     case VK_SUCCESS:
         swapchainOutOfDate = false;
-        swapchainUsable = true;
         break;
     case VK_SUBOPTIMAL_KHR:
         swapchainOutOfDate = true;
-        swapchainUsable = true;
         break;
     case VK_ERROR_OUT_OF_DATE_KHR:
         swapchainOutOfDate = true;
-        swapchainUsable = false;
         break;
     default:
         check_success(acquireResult);
