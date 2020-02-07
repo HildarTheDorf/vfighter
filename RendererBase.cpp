@@ -13,11 +13,17 @@ RendererBase::~RendererBase()
         vkDeviceWaitIdle(d.device);
 
         destroy_swapchain();
+
+        for (const auto& perFrame : d.perFrameData)
+        {
+            vkDestroyFence(d.device, perFrame.fence, nullptr);
+        }
      
         vkDestroyPipeline(d.device, d.pipeline, nullptr);
         vkDestroyRenderPass(d.device, d.renderPass, nullptr);
 
         vkDestroyDescriptorPool(d.device, d.descriptorPool, nullptr);
+        vmaDestroyBuffer(d.allocator, d.uniformBuffer, d.uniformMemory);
 
         vkDestroyPipelineCache(d.device, d.pipelineCache, nullptr);
         vkDestroyShaderModule(d.device, d.vertexModule, nullptr);
@@ -46,31 +52,16 @@ RendererBase::~RendererBase()
 
 void RendererBase::destroy_swapchain()
 {
-    std::vector<VkFence> fences;
-    std::vector<VkCommandBuffer> commandBuffers;
-    for (const auto& perImage : perImageData)
-    {
-        fences.emplace_back(perImage.fence);
-        commandBuffers.emplace_back(perImage.commandBuffer);
-    }
-    vkWaitForFences(d.device, fences.size(), fences.data(), VK_TRUE, UINT64_MAX);
-
-    for (const auto& perImage : perImageData)
+    for (const auto& perImage : d.perImageData)
     {
         vkDestroyFramebuffer(d.device, perImage.framebuffer, nullptr);
         vkDestroyImageView(d.device, perImage.imageView, nullptr);
         vkDestroySemaphore(d.device, perImage.renderCompleteSemaphore, nullptr);
-        vkDestroyFence(d.device, perImage.fence, nullptr);
     }
-    vkFreeCommandBuffers(d.device, d.commandPool, commandBuffers.size(), commandBuffers.data());
-    perImageData.clear();
+    d.perImageData.clear();
 
     vkDestroyImageView(d.device, d.depthView, nullptr);
     d.depthView = nullptr;
-
-    vmaDestroyBuffer(d.allocator, d.uniformBuffer, d.uniformMemory);
-    d.uniformMemory = VK_NULL_HANDLE;
-    d.uniformBuffer = VK_NULL_HANDLE;
 
     vmaDestroyImage(d.allocator, d.depthImage, d.depthMemory);
     d.depthMemory = VK_NULL_HANDLE;

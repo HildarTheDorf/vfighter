@@ -2,18 +2,23 @@
 
 #include <vk_mem_alloc.h>
 
+#include <array>
 #include <vector>
+
+constexpr uint32_t RENDERER_MAX_FRAMES_IN_FLIGHT = 2;
+
+struct PerFrame
+{
+    VkCommandBuffer commandBuffer;
+    VkFence fence;
+};
 
 struct PerImage
 {
-    VkCommandBuffer commandBuffer;
-
-    VkFence fence;
-    VkSemaphore renderCompleteSemaphore;
-
     VkImage image;
     VkImageView imageView;
     VkFramebuffer framebuffer;
+    VkSemaphore renderCompleteSemaphore;
 };
 
 class RendererBase
@@ -57,8 +62,11 @@ protected:
         VkSemaphore acquireCompleteSemaphore;
         VkShaderModule fragmentModule, vertexModule;
         VkPipelineCache pipelineCache;
+        std::array<PerFrame, RENDERER_MAX_FRAMES_IN_FLIGHT> perFrameData;
 
         // Descriptors
+        VkBuffer uniformBuffer;
+        VmaAllocation uniformMemory;
         VkDescriptorPool descriptorPool;
         VkDescriptorSet descriptorSet;
 
@@ -68,10 +76,10 @@ protected:
 
         // Swapchain
         VkSwapchainKHR swapchain;
-        VkBuffer uniformBuffer;
         VkImage depthImage;
-        VmaAllocation uniformMemory, depthMemory;
+        VmaAllocation depthMemory;
         VkImageView depthView;
+
+        std::vector<PerImage> perImageData;
     } d;
-    std::vector<PerImage> perImageData;
 };

@@ -4,7 +4,6 @@
 
 #include <glm/gtx/transform.hpp>
 
-#include <array>
 #include <cstring>
 #include <fstream>
 #include <iterator>
@@ -149,12 +148,15 @@ void Renderer::render(const Scene& scene)
 
     if (!swapchainOutOfDate)
     {
-        const auto& imageData = perImageData[imageIndex];
+        frameIndex = (frameIndex + 1) % RENDERER_MAX_FRAMES_IN_FLIGHT;
 
-        check_success(vkWaitForFences(d.device, 1, &imageData.fence, VK_TRUE, UINT64_MAX));
-        check_success(vkResetFences(d.device, 1, &imageData.fence));
+        const auto& frameData = d.perFrameData[frameIndex];
+        const auto& imageData = d.perImageData[imageIndex];
 
-        record_command_buffer(imageIndex, scene);
+        check_success(vkWaitForFences(d.device, 1, &frameData.fence, VK_TRUE, UINT64_MAX));
+        check_success(vkResetFences(d.device, 1, &frameData.fence));
+
+        record_command_buffer(frameIndex, imageIndex, scene);
 
         constexpr VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
         VkSubmitInfo submitInfo = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
@@ -162,10 +164,10 @@ void Renderer::render(const Scene& scene)
         submitInfo.pWaitSemaphores = &d.acquireCompleteSemaphore;
         submitInfo.pWaitDstStageMask = &waitStage;
         submitInfo.commandBufferCount = 1;
-        submitInfo.pCommandBuffers = &imageData.commandBuffer;
+        submitInfo.pCommandBuffers = &frameData.commandBuffer;
         submitInfo.signalSemaphoreCount = 1;
         submitInfo.pSignalSemaphores = &imageData.renderCompleteSemaphore;
-        check_success(vkQueueSubmit(queue, 1, &submitInfo, imageData.fence));
+        check_success(vkQueueSubmit(queue, 1, &submitInfo, frameData.fence));
 
         VkPresentInfoKHR presentInfo = { VK_STRUCTURE_TYPE_PRESENT_INFO_KHR };
         presentInfo.waitSemaphoreCount = 1;
@@ -423,10 +425,42 @@ void Renderer::create_common()
     pipelineCacheCreateInfo.pInitialData = pipelineCacheData.data();
 
     check_success(vkCreatePipelineCache(d.device, &pipelineCacheCreateInfo, nullptr, &d.pipelineCache));
+
+    VkCommandBufferAllocateInfo commandBufferAllocateInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
+    commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    commandBufferAllocateInfo.commandPool = d.commandPool;
+    commandBufferAllocateInfo.commandBufferCount = RENDERER_MAX_FRAMES_IN_FLIGHT;
+
+    std::array<VkCommandBuffer, RENDERER_MAX_FRAMES_IN_FLIGHT> commandBuffers;
+    check_success(vkAllocateCommandBuffers(d.device, &commandBufferAllocateInfo, commandBuffers.data()));
+
+    VkFenceCreateInfo fenceCreateInfo = { VK_STRUCTURE_TYPE_FENCE_CREATE_INFO };
+    fenceCreateInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+
+    for (uint32_t i = 0; i < RENDERER_MAX_FRAMES_IN_FLIGHT; ++i)
+    {
+        auto& perFence = d.perFrameData[i];
+
+        perFence.commandBuffer = commandBuffers[i];
+
+        check_success(vkCreateFence(d.device, &fenceCreateInfo, nullptr, &perFence.fence));
+    }
 }
 
 void Renderer::create_descriptors()
 {
+    VkBufferCreateInfo uniformBufferCreateInfo = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+    uniformBufferCreateInfo.size = RENDERER_MAX_FRAMES_IN_FLIGHT * sizeof(Uniforms);
+    uniformBufferCreateInfo.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+
+    VmaAllocationCreateInfo uniformBufferAllocationInfo = { };
+    uniformBufferAllocationInfo.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
+    uniformBufferAllocationInfo.usage = VMA_MEMORY_USAGE_CPU_TO_GPU;
+    
+    check_success(vmaCreateBuffer(d.allocator, &uniformBufferCreateInfo, &uniformBufferAllocationInfo, &d.uniformBuffer, &d.uniformMemory, nullptr));
+
+    const VkDescriptorBufferInfo uniformBufferInfo = { d.uniformBuffer, 0, sizeof(Uniforms) };
+
     constexpr std::array<VkDescriptorPoolSize, 1> poolSizes = {
         {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1}
     };
@@ -444,6 +478,15 @@ void Renderer::create_descriptors()
     descriptorAllocateInfo.pSetLayouts = &d.descriptorSetLayout;
 
     check_success(vkAllocateDescriptorSets(d.device, &descriptorAllocateInfo, &d.descriptorSet));
+
+    std::array<VkWriteDescriptorSet, 1> descriptorWrites = {};
+    descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    descriptorWrites[0].dstSet = d.descriptorSet;
+    descriptorWrites[0].dstBinding = 0;
+    descriptorWrites[0].descriptorCount = 1;
+    descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+    descriptorWrites[0].pBufferInfo = &uniformBufferInfo;
+    vkUpdateDescriptorSets(d.device, descriptorWrites.size(), descriptorWrites.data(), 0, nullptr);
 }
 
 void Renderer::create_pipeline()
@@ -662,47 +705,10 @@ void Renderer::create_swapchain()
 
     check_success(vkCreateImageView(d.device, &depthImageViewCreateInfo, nullptr, &d.depthView));
 
-    VkBufferCreateInfo uniformBufferCreateInfo = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
-    uniformBufferCreateInfo.size = numSwapchainImages * sizeof(Uniforms);
-    uniformBufferCreateInfo.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
-
-    VmaAllocationCreateInfo uniformBufferAllocationInfo = { };
-    uniformBufferAllocationInfo.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
-    uniformBufferAllocationInfo.usage = VMA_MEMORY_USAGE_CPU_TO_GPU;
-    
-    check_success(vmaCreateBuffer(d.allocator, &uniformBufferCreateInfo, &uniformBufferAllocationInfo, &d.uniformBuffer, &d.uniformMemory, nullptr));
-
-    const VkDescriptorBufferInfo uniformBufferInfo = { d.uniformBuffer, 0, sizeof(Uniforms) };
-
-    std::array<VkWriteDescriptorSet, 1> descriptorWrites = {};
-    descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    descriptorWrites[0].dstSet = d.descriptorSet;
-    descriptorWrites[0].dstBinding = 0;
-    descriptorWrites[0].descriptorCount = 1;
-    descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
-    descriptorWrites[0].pBufferInfo = &uniformBufferInfo;
-    vkUpdateDescriptorSets(d.device, descriptorWrites.size(), descriptorWrites.data(), 0, nullptr);
-
-    VkCommandBufferAllocateInfo commandBufferAllocateInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
-    commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    commandBufferAllocateInfo.commandPool = d.commandPool;
-    commandBufferAllocateInfo.commandBufferCount = numSwapchainImages;
-
-    std::vector<VkCommandBuffer> commandBuffers(numSwapchainImages);
-    check_success(vkAllocateCommandBuffers(d.device, &commandBufferAllocateInfo, commandBuffers.data()));
-
-    perImageData.resize(numSwapchainImages);
+    d.perImageData.resize(numSwapchainImages);
     for (size_t i = 0; i < numSwapchainImages; ++i)
     {
-        auto& imageData = perImageData[i];
-
-        imageData.commandBuffer = commandBuffers.back();
-        commandBuffers.pop_back();
-
-        VkFenceCreateInfo fenceCreateInfo = { VK_STRUCTURE_TYPE_FENCE_CREATE_INFO };
-        fenceCreateInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-
-        check_success(vkCreateFence(d.device, &fenceCreateInfo, nullptr, &imageData.fence));
+        auto& imageData = d.perImageData[i];
 
         constexpr VkSemaphoreCreateInfo semaphoreCreateInfo = { VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO };
         check_success(vkCreateSemaphore(d.device, &semaphoreCreateInfo, nullptr, &imageData.renderCompleteSemaphore));
@@ -742,14 +748,22 @@ void Renderer::finish_data_upload()
 
 void Renderer::recreate_swapchain()
 {
+    std::array<VkFence, RENDERER_MAX_FRAMES_IN_FLIGHT> fences;
+    for (uint32_t i = 0; i < RENDERER_MAX_FRAMES_IN_FLIGHT; ++i)
+    {
+        fences[i] = d.perFrameData[i].fence;
+    }
+    check_success(vkWaitForFences(d.device, fences.size(), fences.data(), VK_TRUE, UINT64_MAX));
+
     destroy_swapchain();
 
     create_swapchain();
 }
 
-void Renderer::record_command_buffer(uint32_t imageIndex, const Scene& scene)
+void Renderer::record_command_buffer(uint32_t frameIndex, uint32_t imageIndex, const Scene& scene)
 {
-    const auto& imageData = perImageData[imageIndex];
+    const auto& frameData = d.perFrameData[frameIndex];
+    const auto& imageData = d.perImageData[imageIndex];
 
     constexpr VkCommandBufferBeginInfo commandBufferBeginInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
 
@@ -764,7 +778,7 @@ void Renderer::record_command_buffer(uint32_t imageIndex, const Scene& scene)
     renderPassBeginInfo.clearValueCount = clearValues.size();
     renderPassBeginInfo.pClearValues = clearValues.data();
 
-    const uint32_t dynamicUniformOffset = imageIndex * sizeof(Uniforms);
+    const uint32_t uniformOffset = frameIndex * sizeof(Uniforms);
 
     const std::array<VkRect2D, 1> scissors = {{
         {{0, 0}, surfaceExtent}
@@ -789,29 +803,27 @@ void Renderer::record_command_buffer(uint32_t imageIndex, const Scene& scene)
 
     const Uniforms uniforms { viewMatrix * modelMatrix, projectionMatrix };
 
-    const auto uniformOffset = imageIndex * sizeof(Uniforms);
-
     void *pData;
     vmaMapMemory(d.allocator, d.uniformMemory, &pData);
         memcpy(reinterpret_cast<void *>(reinterpret_cast<uintptr_t>(pData) + uniformOffset), &uniforms, sizeof(Uniforms));
         vmaFlushAllocation(d.allocator, d.uniformMemory, uniformOffset, sizeof(Uniforms));
     vmaUnmapMemory(d.allocator, d.uniformMemory);
 
-    check_success(vkResetCommandBuffer(imageData.commandBuffer, 0));
-    check_success(vkBeginCommandBuffer(imageData.commandBuffer, &commandBufferBeginInfo));
+    check_success(vkResetCommandBuffer(frameData.commandBuffer, 0));
+    check_success(vkBeginCommandBuffer(frameData.commandBuffer, &commandBufferBeginInfo));
 
-    vkCmdSetScissor(imageData.commandBuffer, 0, scissors.size(), scissors.data());
-    vkCmdSetViewport(imageData.commandBuffer, 0, viewports.size(), viewports.data());
+    vkCmdSetScissor(frameData.commandBuffer, 0, scissors.size(), scissors.data());
+    vkCmdSetViewport(frameData.commandBuffer, 0, viewports.size(), viewports.data());
 
-    vkCmdBeginRenderPass(imageData.commandBuffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
+    vkCmdBeginRenderPass(frameData.commandBuffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-        vkCmdBindDescriptorSets(imageData.commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, d.pipelineLayout, 0, 1, &d.descriptorSet, 1, &dynamicUniformOffset);
-        vkCmdBindPipeline(imageData.commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, d.pipeline);
-        vkCmdBindIndexBuffer(imageData.commandBuffer, d.indexBuffer, 0, VK_INDEX_TYPE_UINT16);
-        vkCmdBindVertexBuffers(imageData.commandBuffer, 0, vertexBuffers.size(), vertexBuffers.data(), vertexOffsets.data());
-        vkCmdDrawIndexed(imageData.commandBuffer, INDEX_DATA.size(), 1, 0, 0, 0);
+        vkCmdBindDescriptorSets(frameData.commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, d.pipelineLayout, 0, 1, &d.descriptorSet, 1, &uniformOffset);
+        vkCmdBindPipeline(frameData.commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, d.pipeline);
+        vkCmdBindIndexBuffer(frameData.commandBuffer, d.indexBuffer, 0, VK_INDEX_TYPE_UINT16);
+        vkCmdBindVertexBuffers(frameData.commandBuffer, 0, vertexBuffers.size(), vertexBuffers.data(), vertexOffsets.data());
+        vkCmdDrawIndexed(frameData.commandBuffer, INDEX_DATA.size(), 1, 0, 0, 0);
 
-    vkCmdEndRenderPass(imageData.commandBuffer);
+    vkCmdEndRenderPass(frameData.commandBuffer);
 
-    check_success(vkEndCommandBuffer(imageData.commandBuffer));
+    check_success(vkEndCommandBuffer(frameData.commandBuffer));
 }

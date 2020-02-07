@@ -41,7 +41,7 @@ private:
     void create_swapchain();
     void finish_data_upload();
 
-    void record_command_buffer(uint32_t imageIndex, const Scene& scene);
+    void record_command_buffer(uint32_t frameIndex, uint32_t imageIndex, const Scene& scene);
     void recreate_swapchain();
 
 private:
@@ -52,4 +52,6 @@ private:
 
     VkSurfaceFormatKHR surfaceFormat;
     VkExtent2D surfaceExtent;
+
+    uint32_t frameIndex;
 };
