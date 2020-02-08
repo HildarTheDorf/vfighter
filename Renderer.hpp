@@ -16,12 +16,22 @@ struct Scene
     glm::quat modelRotation;
 };
 
-enum RendererFlags
+enum class RendererFlags
 {
     None = 0,
     EnableValidation = 1 << 0,
-    EnableRenderDoc = 1 << 1
+    SupportGpuAssistedDebugging = 1 << 1
 };
+
+inline RendererFlags operator|(RendererFlags lhs, RendererFlags rhs)
+{
+    return static_cast<RendererFlags>(static_cast<int>(lhs) | static_cast<int>(rhs));
+}
+
+inline RendererFlags operator&(RendererFlags lhs, RendererFlags rhs)
+{
+    return static_cast<RendererFlags>(static_cast<int>(lhs) & static_cast<int>(rhs));
+}
 
 class Renderer : protected RendererBase
 {
@@ -38,7 +48,7 @@ private:
     void create_instance(RendererFlags flags);
     void create_surface(xcb_connection_t *connection, xcb_window_t window);
     void select_physical_device();
-    void create_device();
+    void create_device(RendererFlags flags);
     void create_upload_objects();
     void allocate_static_memory();
     void begin_data_upload();

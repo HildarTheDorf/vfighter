@@ -4,6 +4,7 @@
 
 #include <glm/gtx/transform.hpp>
 
+#include <algorithm>
 #include <cstring>
 #include <fstream>
 #include <iterator>
@@ -106,12 +107,31 @@ static VkSurfaceFormatKHR select_format(VkPhysicalDevice physicalDevice, VkSurfa
     return surfaceFormats[0];
 }
 
+static VkPresentModeKHR select_present_mode(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface)
+{
+    uint32_t numPresentModes;
+    check_success(vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &numPresentModes, nullptr));
+    std::vector<VkPresentModeKHR> presentModes(numPresentModes);
+    check_success(vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &numPresentModes, presentModes.data()));
+
+    constexpr std::array desiredPresentModes = { VK_PRESENT_MODE_FIFO_RELAXED_KHR, VK_PRESENT_MODE_FIFO_KHR };
+    for (const auto desiredPresentMode : desiredPresentModes)
+    {
+        if (presentModes.end() != std::find(presentModes.begin(), presentModes.end(), desiredPresentMode))
+        {
+            return desiredPresentMode;
+        }
+    }
+
+    throw std::runtime_error("No supported present mode");
+}
+
 Renderer::Renderer(RendererFlags flags, xcb_connection_t *connection, xcb_window_t window)
 {
     create_instance(flags);
     create_surface(connection, window);
     select_physical_device();
-    create_device();
+    create_device(flags);
     create_upload_objects();
     allocate_static_memory();
     begin_data_upload();
@@ -206,20 +226,15 @@ void Renderer::save_caches()
 void Renderer::create_instance(RendererFlags flags)
 {
     VkApplicationInfo applicationInfo = { VK_STRUCTURE_TYPE_APPLICATION_INFO };
-    applicationInfo.apiVersion = VK_API_VERSION_1_2;
+    applicationInfo.apiVersion = VK_API_VERSION_1_1;
 
     std::vector<const char *> enabledLayers;
     std::vector instanceExtensions = { VK_KHR_SURFACE_EXTENSION_NAME, VK_KHR_XCB_SURFACE_EXTENSION_NAME };
 
-    if (flags & RendererFlags::EnableValidation)
+    if (RendererFlags::None != (RendererFlags::EnableValidation & flags))
     {
         enabledLayers.emplace_back("VK_LAYER_KHRONOS_validation");
         instanceExtensions.emplace_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
-    }
-
-    if (flags & RendererFlags::EnableRenderDoc)
-    {
-        enabledLayers.emplace_back("VK_LAYER_RENDERDOC_Capture");
     }
 
     VkInstanceCreateInfo instanceCreateInfo = { VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO };
@@ -273,9 +288,13 @@ void Renderer::select_physical_device()
     throw std::runtime_error("No supported device found");
 }
 
-void Renderer::create_device()
+void Renderer::create_device(RendererFlags flags)
 {
+    VkPhysicalDeviceFeatures availableFeatures;
+    vkGetPhysicalDeviceFeatures(physicalDevice, &availableFeatures);
+
     constexpr auto queuePriority = 0.0f;
+
     VkDeviceQueueCreateInfo queueCreateInfo = { VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO };
     queueCreateInfo.queueFamilyIndex = queueFamilyIndex;
     queueCreateInfo.queueCount = 1;
@@ -283,11 +302,20 @@ void Renderer::create_device()
 
     constexpr std::array deviceExtensions = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
 
+    VkPhysicalDeviceFeatures enabledFeatures = {};
+
+    if (RendererFlags::None != (RendererFlags::SupportGpuAssistedDebugging & flags))
+    {
+        enabledFeatures.fragmentStoresAndAtomics = availableFeatures.fragmentStoresAndAtomics;
+        enabledFeatures.vertexPipelineStoresAndAtomics = availableFeatures.vertexPipelineStoresAndAtomics;
+    }
+
     VkDeviceCreateInfo deviceCreateInfo = { VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO } ;
     deviceCreateInfo.queueCreateInfoCount = 1;
     deviceCreateInfo.pQueueCreateInfos = &queueCreateInfo;
     deviceCreateInfo.enabledExtensionCount = deviceExtensions.size();
     deviceCreateInfo.ppEnabledExtensionNames = deviceExtensions.data();
+    deviceCreateInfo.pEnabledFeatures = &enabledFeatures;
 
     check_success(vkCreateDevice(physicalDevice, &deviceCreateInfo, nullptr, &d.device));
     vkGetDeviceQueue(d.device, queueFamilyIndex, 0, &queue);
@@ -662,7 +690,8 @@ void Renderer::create_swapchain()
     {
         throw std::runtime_error("Bad composite alpha");
     }
-    
+
+    const auto presentMode = select_present_mode(physicalDevice, d.surface);
 
     VkSwapchainCreateInfoKHR swapchainCreateInfo = { VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR };
     swapchainCreateInfo.surface = d.surface;
@@ -674,7 +703,7 @@ void Renderer::create_swapchain()
     swapchainCreateInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
     swapchainCreateInfo.preTransform = surfaceCaps.currentTransform;
     swapchainCreateInfo.compositeAlpha = compositeAlpha;
-    swapchainCreateInfo.presentMode = VK_PRESENT_MODE_FIFO_KHR;
+    swapchainCreateInfo.presentMode = presentMode;
     swapchainCreateInfo.clipped = VK_TRUE;
 
     check_success(vkCreateSwapchainKHR(d.device, &swapchainCreateInfo, nullptr, &d.swapchain));
