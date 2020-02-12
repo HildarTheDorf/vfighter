@@ -25,7 +25,7 @@ constexpr uint32_t DEFAULT_IMAGE_COUNT = 3;
 
 constexpr VkFormat DEPTH_FORMAT = VK_FORMAT_D16_UNORM;
 constexpr float FIELD_OF_VIEW = glm::radians(45.0f);
-constexpr float NEAR_CLIP_PLANE = 0.1f;
+constexpr float NEAR_CLIP_PLANE = 1.0f;
 constexpr char PIPELINE_CACHE_FILENAME[] = "pipelinecache.bin";
 constexpr VkDeviceSize STAGING_BUFFER_SIZE = 1 << 10;
 
