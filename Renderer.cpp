@@ -9,12 +9,6 @@
 #include <fstream>
 #include <iterator>
 
-struct PerVertex
-{
-    glm::vec3 position;
-    glm::u8vec3 color;
-};
-
 struct Uniforms
 {
     glm::mat4 modelViewMatrix;
@@ -27,27 +21,7 @@ constexpr VkFormat DEPTH_FORMAT = VK_FORMAT_D16_UNORM;
 constexpr float FIELD_OF_VIEW = glm::radians(45.0f);
 constexpr float NEAR_CLIP_PLANE = 1.0f;
 constexpr char PIPELINE_CACHE_FILENAME[] = "pipelinecache.bin";
-constexpr VkDeviceSize STAGING_BUFFER_SIZE = 1 << 10;
-
-constexpr std::array<uint16_t, 36> INDEX_DATA = {{
-    0, 1, 2, 4, 2, 1,
-    1, 5, 4, 7, 4, 5,
-    5, 3, 7, 6, 7, 3,
-    3, 0, 6, 2, 6, 0,
-    2, 4, 6, 7, 6, 4,
-    1, 0, 5, 3, 5, 0
-}};
-constexpr std::array<PerVertex, 8> VERTEX_DATA = {{
-    {{ -1.0f, -1.0f, -1.0f }, {   0,   0,   0 } },
-    {{  1.0f, -1.0f, -1.0f }, { 255,   0,   0 } },
-    {{ -1.0f,  1.0f, -1.0f }, {   0, 255,   0 } },
-    {{ -1.0f, -1.0f,  1.0f }, {   0,   0, 255 } },
-    {{  1.0f,  1.0f, -1.0f }, { 255, 255,   0 } },
-    {{  1.0f, -1.0f,  1.0f }, { 255,   0, 255 } },
-    {{ -1.0f,  1.0f,  1.0f }, {   0, 255, 255 } },
-    {{  1.0f,  1.0f,  1.0f }, { 255, 255, 255 } },
-
-}};
+constexpr VkDeviceSize STAGING_BUFFER_SIZE = 1 << 17;
 
 constexpr void check_success(VkResult vkResult)
 {
@@ -127,6 +101,7 @@ static VkPresentModeKHR select_present_mode(VkPhysicalDevice physicalDevice, VkS
 }
 
 Renderer::Renderer(RendererFlags flags, xcb_connection_t *connection, xcb_window_t window)
+    :_mesh("../models/monkey.obj")
 {
     create_instance(flags);
     create_surface(connection, window);
@@ -358,17 +333,8 @@ void Renderer::allocate_static_memory()
 
     check_success(vmaCreateBuffer(d.allocator, &stagingBufferCreateInfo, &stagingBufferAllocationCreateInfo, &d.stagingBuffer, &d.stagingMemory, nullptr));
 
-    VkBufferCreateInfo indexBufferCreateInfo = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
-    indexBufferCreateInfo.size = sizeof(INDEX_DATA);
-    indexBufferCreateInfo.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
-
-    VmaAllocationCreateInfo indexBufferAllocationCreateInfo = {};
-    indexBufferAllocationCreateInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
-
-    check_success(vmaCreateBuffer(d.allocator, &indexBufferCreateInfo, &indexBufferAllocationCreateInfo, &d.indexBuffer, &d.indexMemory, nullptr));
-
     VkBufferCreateInfo vertexBufferCreateInfo = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
-    vertexBufferCreateInfo.size = sizeof(VERTEX_DATA);
+    vertexBufferCreateInfo.size = sizeof(PerVertex) * _mesh.verticies.size();
     vertexBufferCreateInfo.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
 
     VmaAllocationCreateInfo vertexBufferAllocationCreateInfo = {};
@@ -382,20 +348,17 @@ void Renderer::begin_data_upload()
     void *pData;
     check_success(vmaMapMemory(d.allocator, d.stagingMemory, &pData));
 
-    constexpr VkDeviceSize indexOffset = 0;
-    constexpr VkDeviceSize indexSize = sizeof(INDEX_DATA);
-    constexpr VkBufferCopy indexRegion { indexOffset, 0, indexSize };
+    constexpr VkDeviceSize vertexOffset = 0;
+    const VkDeviceSize vertexSize = sizeof(PerVertex) * _mesh.verticies.size();
+    const VkBufferCopy vertexRegion { vertexOffset, 0, vertexSize };
 
-    memcpy(reinterpret_cast<void *>(reinterpret_cast<uintptr_t>(pData) + indexOffset), &INDEX_DATA, indexSize);
+    memcpy(reinterpret_cast<void *>(reinterpret_cast<uintptr_t>(pData) + vertexOffset), _mesh.verticies.data(), vertexSize);
 
-    constexpr VkDeviceSize vertexOffset = indexOffset + indexSize;
-    constexpr VkDeviceSize vertexSize = sizeof(VERTEX_DATA);
-    constexpr VkBufferCopy vertexRegion { vertexOffset, 0, vertexSize };
-
-    memcpy(reinterpret_cast<void *>(reinterpret_cast<uintptr_t>(pData) + vertexOffset), &VERTEX_DATA, vertexSize);
-
-    constexpr VkDeviceSize finalOffset = vertexOffset + vertexSize;
-    static_assert(finalOffset <= STAGING_BUFFER_SIZE);
+    const VkDeviceSize finalOffset = vertexOffset + vertexSize;
+    if (finalOffset > STAGING_BUFFER_SIZE)
+    {
+        throw std::runtime_error("Out of GPU memory");
+    }
 
     vmaUnmapMemory(d.allocator, d.stagingMemory);
 
@@ -403,8 +366,7 @@ void Renderer::begin_data_upload()
     commandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 
     check_success(vkBeginCommandBuffer(d.uploadCommandBuffer, &commandBufferBeginInfo));
-    vkCmdCopyBuffer(d.uploadCommandBuffer, d.stagingBuffer, d.indexBuffer, 1, &indexRegion);
-    vkCmdCopyBuffer(d.uploadCommandBuffer, d.stagingBuffer, d.vertexBuffer, 1, &vertexRegion);
+        vkCmdCopyBuffer(d.uploadCommandBuffer, d.stagingBuffer, d.vertexBuffer, 1, &vertexRegion);
     check_success(vkEndCommandBuffer(d.uploadCommandBuffer));
 
     VkSubmitInfo submitInfo = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
@@ -619,8 +581,8 @@ void Renderer::create_pipeline()
     vertexAttributes[0].offset = offsetof(PerVertex, position);
     vertexAttributes[1].location = 1;
     vertexAttributes[1].binding = 0;
-    vertexAttributes[1].format = VK_FORMAT_R8G8B8_UNORM;
-    vertexAttributes[1].offset = offsetof(PerVertex, color);
+    vertexAttributes[1].format = VK_FORMAT_R32G32B32_SFLOAT;
+    vertexAttributes[1].offset = offsetof(PerVertex, normal);
 
     VkPipelineVertexInputStateCreateInfo vertexInputState = { VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO };
     vertexInputState.vertexBindingDescriptionCount = vertexBindings.size();
@@ -637,7 +599,7 @@ void Renderer::create_pipeline()
 
     VkPipelineRasterizationStateCreateInfo rasterizationState = { VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO };
     rasterizationState.cullMode = VK_CULL_MODE_BACK_BIT;
-    rasterizationState.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+    rasterizationState.frontFace = VK_FRONT_FACE_CLOCKWISE;
     rasterizationState.lineWidth = 1.0f;
 
     VkPipelineMultisampleStateCreateInfo multisampleState = { VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO };
@@ -877,9 +839,8 @@ void Renderer::record_command_buffer(uint32_t frameIndex, uint32_t imageIndex, c
 
         vkCmdBindDescriptorSets(frameData.commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, d.pipelineLayout, 0, 1, &d.descriptorSet, 1, &uniformOffset);
         vkCmdBindPipeline(frameData.commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, d.pipeline);
-        vkCmdBindIndexBuffer(frameData.commandBuffer, d.indexBuffer, 0, VK_INDEX_TYPE_UINT16);
         vkCmdBindVertexBuffers(frameData.commandBuffer, 0, vertexBuffers.size(), vertexBuffers.data(), vertexOffsets.data());
-        vkCmdDrawIndexed(frameData.commandBuffer, INDEX_DATA.size(), 1, 0, 0, 0);
+        vkCmdDraw(frameData.commandBuffer, _mesh.verticies.size(), 1, 0, 0);
 
     vkCmdEndRenderPass(frameData.commandBuffer);
 

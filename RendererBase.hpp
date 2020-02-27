@@ -52,8 +52,8 @@ protected:
         VkFence uploadFence;
 
         // Static memory
-        VkBuffer stagingBuffer, indexBuffer, vertexBuffer;
-        VmaAllocation stagingMemory, indexMemory, vertexMemory;
+        VkBuffer stagingBuffer, vertexBuffer;
+        VmaAllocation stagingMemory, vertexMemory;
 
         // Common
         VkCommandPool commandPool;

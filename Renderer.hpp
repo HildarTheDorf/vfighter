@@ -4,9 +4,9 @@
 #define GLM_FORCE_LEFT_HANDED
 #define VK_USE_PLATFORM_XCB_KHR
 
+#include "Mesh.hpp"
 #include "RendererBase.hpp"
 
-#include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
 
 struct Scene
@@ -62,6 +62,8 @@ private:
     void recreate_swapchain();
 
 private:
+    const Mesh _mesh;
+
     VkPhysicalDevice physicalDevice;
     uint32_t queueFamilyIndex;
 

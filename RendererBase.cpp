@@ -34,7 +34,6 @@ RendererBase::~RendererBase()
         vkDestroyCommandPool(d.device, d.commandPool, nullptr);
 
         vmaDestroyBuffer(d.allocator, d.vertexBuffer, d.vertexMemory);
-        vmaDestroyBuffer(d.allocator, d.indexBuffer, d.indexMemory);
         vmaDestroyBuffer(d.allocator, d.stagingBuffer, d.stagingMemory);
 
         vkDestroyFence(d.device, d.uploadFence, nullptr);
