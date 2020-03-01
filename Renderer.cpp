@@ -410,8 +410,8 @@ void Renderer::begin_data_upload()
     lightingData.lights[0].position = { 2.0f, 2.0f, 0.0f };
     lightingData.lights[0].color = { 1.0f, 1.0f, 1.0f };
     lightingData.lights[0].power = 40.0f;
-    lightingData.materials[0].ambient = { 0.1, 0.0, 0.0 };
-    lightingData.materials[0].diffuse = { 0.5, 0.0, 0.0 };
+    lightingData.materials[0].ambient = { 0.1, 0.1, 0.1 };
+    lightingData.materials[0].diffuse = { 0.5, 0.3, 0.3 };
     lightingData.materials[0].specular = { 1.0, 1.0, 1.0 };
     lightingData.materials[0].shininess = 16.0f;
 

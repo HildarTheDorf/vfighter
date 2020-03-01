@@ -30,39 +30,38 @@ layout(std140, set=0, binding=1) uniform LightingUniforms {
 
 layout(location=0) out vec4 out_Color;
 
-void main()
+vec3 calculate_lighting(const in Material material, const in Light light)
 {
-    const Material material = u_Materials[u_MaterialIndex];
-    const Light light = u_Lights[0];
-
     vec3 normal = normalize(in_Normal);
-    vec3 lightDir = light.position - in_Position;
-    float distance = length(lightDir);
-    distance = distance * distance;
-    lightDir = normalize(lightDir);
-
+    vec3 lightRel = light.position - in_Position;
+    vec3 lightDir = normalize(lightRel);
+    
+    float distance2 = pow(length(lightRel), 2);
     float lambertian = max(dot(lightDir, normal), 0.0);
     float specular = 0.0;
 
     if (lambertian > 0.0)
     {
         vec3 viewDir = normalize(-in_Position);
-
         vec3 halfDir = normalize(lightDir + viewDir);
         float specAngle = max(dot(halfDir, normal), 0.0);
+
         specular = pow(specAngle, material.shininess);
     }
 
-    vec3 color = material.ambient +
-                        material.diffuse * lambertian * light.color * light.power / distance +
-                       material.specular * specular * light.color * light.power / distance;
-    
-    if (material.shininess == 16)
+    vec3 baseColor = material.diffuse * lambertian + material.specular * specular;
+    return baseColor * light.color * light.power / distance2;
+}
+
+void main()
+{
+    const Material material = u_Materials[u_MaterialIndex];
+
+    vec3 color = material.ambient;
+    for (uint i = 0; i < sc_NumLights; ++i)
     {
-        out_Color = vec4(color, 1.0);
+        color += calculate_lighting(material, u_Lights[i]);
     }
-    else
-    {
-        out_Color = vec4(1.0, 0.0, 0.0, 1.0);     
-    }
+
+    out_Color = vec4(color, 1.0);
 }
