@@ -23,7 +23,6 @@ RendererBase::~RendererBase()
         vkDestroyRenderPass(d.device, d.renderPass, nullptr);
 
         vkDestroyDescriptorPool(d.device, d.descriptorPool, nullptr);
-        vmaDestroyBuffer(d.allocator, d.uniformBuffer, d.uniformMemory);
 
         vkDestroyPipelineCache(d.device, d.pipelineCache, nullptr);
         vkDestroyShaderModule(d.device, d.vertexModule, nullptr);
@@ -34,6 +33,8 @@ RendererBase::~RendererBase()
         vkDestroyCommandPool(d.device, d.commandPool, nullptr);
 
         vmaDestroyBuffer(d.allocator, d.vertexBuffer, d.vertexMemory);
+        vmaDestroyBuffer(d.allocator, d.transformUniformBuffer, d.transformUniformMemory);
+        vmaDestroyBuffer(d.allocator, d.lightingUniformBuffer, d.lightingUniformMemory);
         vmaDestroyBuffer(d.allocator, d.stagingBuffer, d.stagingMemory);
 
         vkDestroyFence(d.device, d.uploadFence, nullptr);

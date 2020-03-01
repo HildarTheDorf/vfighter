@@ -52,8 +52,8 @@ protected:
         VkFence uploadFence;
 
         // Static memory
-        VkBuffer stagingBuffer, vertexBuffer;
-        VmaAllocation stagingMemory, vertexMemory;
+        VkBuffer stagingBuffer, lightingUniformBuffer, transformUniformBuffer, vertexBuffer;
+        VmaAllocation stagingMemory, lightingUniformMemory, transformUniformMemory, vertexMemory;
 
         // Common
         VkCommandPool commandPool;
@@ -65,8 +65,6 @@ protected:
         std::array<PerFrame, RENDERER_MAX_FRAMES_IN_FLIGHT> perFrameData;
 
         // Descriptors
-        VkBuffer uniformBuffer;
-        VmaAllocation uniformMemory;
         VkDescriptorPool descriptorPool;
         VkDescriptorSet descriptorSet;
 
