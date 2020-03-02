@@ -8,7 +8,7 @@ function(add_shaders)
 
         add_custom_command(
             OUTPUT ${SHADER_OUTPUT}
-            COMMAND glslangValidator ARGS --target-env vulkan1.1 -o ${SHADER_OUTPUT} ${SHADER_INPUT}
+            COMMAND glslc ARGS -O --target-env=vulkan1.1 -o ${SHADER_OUTPUT} ${SHADER_INPUT}
             MAIN_DEPENDENCY ${SHADER_INPUT}
             VERBATIM
         )
