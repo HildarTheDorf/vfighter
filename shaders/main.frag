@@ -1,7 +1,7 @@
 #version 460
 
-layout(constant_id = 0) const uint sc_NumLights = 1;
-layout(constant_id = 1) const uint sc_MaxMaterials = 1;
+layout(constant_id = 0) const uint MAX_LIGHTS = 2;
+const uint MAX_MATERIALS = 1;
 
 struct Material {
     vec3 ambient;
@@ -24,8 +24,8 @@ layout(push_constant) uniform PushConstants {
 };
 
 layout(std140, set=0, binding=1) uniform LightingUniforms {
-    Light u_Lights[sc_NumLights];
-    Material u_Materials[sc_MaxMaterials];
+    Light u_Lights[MAX_LIGHTS];
+    Material u_Materials[MAX_MATERIALS];
 };
 
 layout(location=0) out vec4 out_Color;
@@ -58,7 +58,7 @@ void main()
     const Material material = u_Materials[u_MaterialIndex];
 
     vec3 color = material.ambient;
-    for (uint i = 0; i < sc_NumLights; ++i)
+    for (uint i = 0; i < u_Lights.length(); ++i)
     {
         color += calculate_lighting(material, u_Lights[i]);
     }

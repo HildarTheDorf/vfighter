@@ -9,8 +9,10 @@
 #include <fstream>
 #include <iterator>
 
-constexpr uint32_t NUM_LIGHTS = 1;
+constexpr uint32_t MAX_LIGHTS = 2;
 constexpr uint32_t MAX_MATERIALS = 1;
+
+constexpr uint32_t NUM_LIGHTS = 2;
 
 struct Light {
     glm::vec3 position;
@@ -30,7 +32,6 @@ struct Material {
 
 struct SpecConstants {
     uint32_t numLights;
-    uint32_t maxMaterials;
 };
 
 struct PushConstants
@@ -39,7 +40,7 @@ struct PushConstants
 };
 
 struct LightingUniforms {
-    Light lights[NUM_LIGHTS];
+    Light lights[MAX_LIGHTS];
     Material materials[MAX_MATERIALS];
 };
 
@@ -136,7 +137,7 @@ static VkPresentModeKHR select_present_mode(VkPhysicalDevice physicalDevice, VkS
 }
 
 Renderer::Renderer(RendererFlags flags, xcb_connection_t *connection, xcb_window_t window)
-    :_mesh("../models/monkey.obj")
+    :_mesh("../models/monkey_smooth.obj")
 {
     create_instance(flags);
     create_surface(connection, window);
@@ -407,11 +408,14 @@ void Renderer::begin_data_upload()
     constexpr VkBufferCopy lightingRegion { lightingOffset, 0, lightingSize };
 
     LightingUniforms lightingData;
-    lightingData.lights[0].position = { 2.0f, 2.0f, 0.0f };
+    lightingData.lights[0].position = { 2.0f, 10.0f, 0.0f };
     lightingData.lights[0].color = { 1.0f, 1.0f, 1.0f };
     lightingData.lights[0].power = 40.0f;
+    lightingData.lights[1].position = { 2.0f, -2.0f, 0.0f };
+    lightingData.lights[1].color = { 1.0f, 0.7f, 0.7f };
+    lightingData.lights[1].power = 4.0f;
     lightingData.materials[0].ambient = { 0.1, 0.1, 0.1 };
-    lightingData.materials[0].diffuse = { 0.5, 0.3, 0.3 };
+    lightingData.materials[0].diffuse = { 0.7, 0.5, 0.3 };
     lightingData.materials[0].specular = { 1.0, 1.0, 1.0 };
     lightingData.materials[0].shininess = 16.0f;
 
@@ -635,15 +639,12 @@ void Renderer::create_pipeline()
 
     check_success(vkCreateRenderPass(d.device, &renderPassCreateInfo, nullptr, &d.renderPass));
 
-    std::array<VkSpecializationMapEntry, 2> fragmentSpecMap = {};
+    std::array<VkSpecializationMapEntry, 1> fragmentSpecMap = {};
     fragmentSpecMap[0].constantID = 0;
-    fragmentSpecMap[0].offset = offsetof(SpecConstants, maxMaterials);
-    fragmentSpecMap[0].size = sizeof(SpecConstants::maxMaterials);
-    fragmentSpecMap[1].constantID = 1;
-    fragmentSpecMap[1].offset = offsetof(SpecConstants, numLights);
-    fragmentSpecMap[1].size = sizeof(SpecConstants::numLights);
+    fragmentSpecMap[0].offset = offsetof(SpecConstants, numLights);
+    fragmentSpecMap[0].size = sizeof(SpecConstants::numLights);
 
-    constexpr SpecConstants fragmentSpecData = { MAX_MATERIALS, NUM_LIGHTS };
+    constexpr SpecConstants fragmentSpecData = { NUM_LIGHTS };
 
     const VkSpecializationInfo fragmentSpecInfo = {
         fragmentSpecMap.size(), fragmentSpecMap.data(),

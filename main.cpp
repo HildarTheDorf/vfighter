@@ -60,7 +60,7 @@ static void update_scene(Scene& scene)
 static void renderer_loop(Renderer& renderer, const Window& window)
 {
     Scene scene = {};
-    scene.cameraLocation = { 0, 3, 0 };
+    scene.cameraLocation = { 0, 1, 0 };
     scene.modelLocation = { 0, 0, 5 };
 
     std::chrono::steady_clock clock;
